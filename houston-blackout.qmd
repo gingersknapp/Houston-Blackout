@@ -1,0 +1,125 @@
+---
+Title: Houston Black-outs
+Date: November 21, 2026
+Author: Olivia Knapp
+---
+
+```{r}
+library(tidyverse)
+library(stars)
+library(terra)
+library(tmap)
+```
+
+## Create raster files of Houston for both nights
+```{r}
+# Read in lighting rasters
+h08v05_preoutage <- rast("data/VNP46A1/VNP46A1.A2021038.h08v05.001.2021039064328.tif")
+h08v06_preoutage <- rast('data/VNP46A1/VNP46A1.A2021038.h08v06.001.2021039064329.tif')
+h08v05_postoutage <- rast('data/VNP46A1/VNP46A1.A2021047.h08v05.001.2021048091106.tif')
+h08v06_postoutage <- rast('data/VNP46A1/VNP46A1.A2021047.h08v06.001.2021048091105.tif')
+```
+```{r}
+# Join pre-outage files
+if (crs(h08v06_preoutage) == crs(h08v05_preoutage)){
+}else{
+    warning("CRS do not match.  Transform before joining")
+}
+
+combined_preoutage <- merge(h08v05_preoutage, h08v06_preoutage)
+
+## Join files for 02/16/2026
+if (crs(h08v06_postoutage) == crs(h08v05_postoutage)){
+}else{
+    warning("CRS do not match.  Transform before joining")
+}
+combined_postoutage <- merge(h08v05_postoutage, h08v06_postoutage)
+```
+```{r}
+# Visualize rasters
+plot(combined_preoutage)
+plot(combined_postoutage)
+```
+## Create a blackout mask
+
+```{r}
+# Create a raster of the differnce in light
+if (crs(combined_postoutage) == crs(combined_preoutage)){
+}else{
+    warning("CRS do not match.  Transform before joining")
+}
+
+ outage_diff <- (combined_postoutage - combined_preoutage)
+
+ # crop to the Houston area
+ houston_bbox <- st_bbox(c(xmin = -96.5, xmax = -94.5, ymin =29,ymax = 30.5), crs = st_crs(outage_diff))
+ 
+ outage_diff <- crop(outage_diff, houston_bbox)
+
+
+# Reclassify outage and reproject
+outage_rcl<- matrix(c(-Inf, 200, NA,
+                        200, Inf, 1),
+                        ncol = 3, byrow = TRUE)
+
+outage_mask <- classify(outage_diff, rcl = outage_rcl) |> 
+    st_as_stars() |> 
+    st_transform(crs = 'EPSG:3083') |> 
+    st_as_sf()
+
+# Check mask
+tm_shape(outage_mask) +
+tm_polygons()
+```
+
+## Exclude highways from the blackout mask
+```{r}
+# Read in highway data, specifying motorways, and condense
+roads <- st_read(dsn = 'data/gis_osm_roads_free_1.gpkg/gis_osm_roads_free_1.gpkg', query ="SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'") |> st_union()
+
+#Create a buffer of area within 200m of roads
+road_buffer <- st_buffer(roads, dist = 200)
+
+# Check CRS with mask
+if (st_crs(road_buffer) == st_crs(outage_mask)){
+}else{
+    warning("CRS do not match.  Transform before joining")
+}
+
+#Reproject roads
+road_buffer <- st_transform(road_buffer, crs = st_crs(outage_mask)) |> st_as_sf()
+
+# Exclude areas within 200 meters of a road from the mask
+outage_exroad <- st_difference(outage_mask, road_buffer)
+
+#Check mask
+tm_shape(outage_exroad) +
+tm_polygons()
+```
+
+## Identify homes impacted by blackouts
+
+```{r}
+# Read in homes data
+homes <- st_read(dsn = 'data/gis_osm_buildings_a_free_1.gpkg/gis_osm_buildings_a_free_1.gpkg', query ="SELECT *
+FROM gis_osm_buildings_a_free_1
+WHERE (type IS NULL AND name IS NULL)
+OR type in ('residential', 'apartments', 'house', 'static_caravan', 'detached')") 
+
+# Match CRS and vectorize
+if (st_crs(homes) == st_crs(outage_mask)){
+}else{
+    warning("CRS do not match.  Transform before joining")
+}
+
+homes <- st_transform(homes, crs = st_crs(outage_exroad)) |> st_as_sf()
+
+# Count homes where mask and homes overlap
+blackout_homes <- st_join(homes, outage_exroad)
+
+print(paste('Approximately',nrow(blackout_homes), 'homes lost power'))
+```
+
+## Conclusion
+
+Between the nights of February 7th and February 16th, 2021, approximately 475941 homes lost power.  Homes were categorized as losing power if there was a drop if 200nW or more in the surrouding 30m by 30m area between the two nights.  However, this may underestimate the true number of homes affected.  Locations where within 200 meters of a major roadway were not included to account for light from roadways, but this may exclude homes in close proximity to roadways.  Additionally, homes generating limited lighting during the night of the initial satellite image, (for example due to lighting preferences, activity timing, or absence from the home) may be excluded as a strong drop in lighting was not detected.
