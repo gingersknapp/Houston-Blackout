@@ -130,6 +130,7 @@ tm_basemap('OpenStreetMap') +
 tm_shape(blackout_homes) +
     tm_dots(
         fill_alpha = 0.3,
+        size = 0.05
     ) +
 tm_title("Location of homes in Houston, TX estimated \nto have lost power in the 2021 winter storms") +
 tm_compass(position = tm_pos_in('right', 'top')) +
