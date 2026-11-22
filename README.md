@@ -20,7 +20,7 @@ This project estimates the number of homes that lost power in the Houston metrop
 
 Data for this analysis is not contained in this repository.  However, VIIRS data used to assess lighting at night was obtained through NASA's [Level-1 and Atmospheric Archive & Distribution System Distributed Active Archive Center (LAADS DAAC)](https://ladsweb.modaps.eosdis.nasa.gov/). for the nights of February 7, 2021 and February 16, 2021.
 
-To control for lighting from roads, we obtained data of roads interesting the Houston area from [OpenStreetMap](https://planet.openstreetmap.org/) and  [Geofabrik](https://download.geofabrik.de/).  Data on houses in the area was also obtained through OpenStreetMap and Geofabrik.
+To control for lighting from roads, we obtained data of roads intersecting the Houston area from [OpenStreetMap](https://planet.openstreetmap.org/) and [Geofabrik](https://download.geofabrik.de/).  Data on homes locations in the area was also obtained through OpenStreetMap and Geofabrik.
 
 ## Authors
  - Olivia Knapp
