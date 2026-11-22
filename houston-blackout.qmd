@@ -1,8 +1,12 @@
 ---
-title: Houston Black-outs
+title: Houston Blackouts
 date: November 21, 2026
 author: Olivia Knapp
 format: typst
+execute:
+    echo: true
+    warning: false
+    message: false
 ---
 
 This project estimates the number of homes that lost power in the Houston metropolitan area during the 2021 winter storms. It compares night light intensity between February 7th and February 16th, 2021, and maps the general locations of homes estimated to have lost power.
@@ -29,6 +33,7 @@ houston_bbox <- st_bbox(c(xmin = -96.5, xmax = -94.5, ymin =29,ymax = 30.5), crs
 ```{r}
 # Join pre-outage files
 if (crs(h08v06_preoutage) == crs(h08v05_preoutage)){
+    return(invisible(NULL))
 }else{
     warning("CRS do not match.  Transform before joining")
 }
@@ -37,6 +42,7 @@ combined_preoutage <- merge(h08v05_preoutage, h08v06_preoutage) |> crop(houston_
 
 ## Join files for 02/16/2026
 if (crs(h08v06_postoutage) == crs(h08v05_postoutage)){
+    return(invisible(NULL))
 }else{
     warning("CRS do not match.  Transform before joining")
 }
@@ -49,6 +55,7 @@ combined_postoutage <- merge(h08v05_postoutage, h08v06_postoutage) |> crop(houst
 
 # Check if CRS match
 if (crs(combined_postoutage) == crs(combined_preoutage)){
+    return(invisible(NULL))
 }else{
     warning("CRS do not match.  Transform before joining")
 }
@@ -76,6 +83,7 @@ tm_shape(combined_map) +
 ```{r}
 # Create a raster of the differnce in light
 if (crs(combined_postoutage) == crs(combined_preoutage)){
+    return(invisible(NULL))
 }else{
     warning("CRS do not match.  Transform before joining")
 }
@@ -114,12 +122,14 @@ OR type in ('residential', 'apartments', 'house', 'static_caravan', 'detached')"
 blackout_homes <- st_intersection(homes, outage_exroad) |> st_point_on_surface()
 
 print(paste('Approximately',length(unique(blackout_homes$osm_id)), 'homes lost power'))
+```
 
 # Map homes that lost power
+```{r}
 tm_basemap('OpenStreetMap') +
 tm_shape(blackout_homes) +
     tm_dots(
-        alpha = 0.3,
+        fill_alpha = 0.3,
     ) +
 tm_title("Location of homes in Houston, TX estimated \nto have lost power in the 2021 winter storms") +
 tm_compass(position = tm_pos_in('right', 'top')) +
@@ -128,4 +138,10 @@ tm_scalebar(position = tm_pos_out('center', 'bottom'))
 
 ## Conclusion
 
-Between the nights of February 7th and February 16th, 2021, approximately 155,869 homes lost power. Homes were categorized as losing power if there was a drop of 200 nW or more in the surrouding 30m by 30m area between the two nights. However, this may underestimate the true number of homes affected. Locations within 200 meters of a major roadway were excluded to account for light from traffic, but this may exclude homes in close proximity to roadways. Additionally, homes generating limited lighting during the night of the initial satellite image (for example due to lighting preferences, activity timing, or absence from the home) may be excluded as a strong drop in lighting was not detected. Additionally, this analysis does not account for power loss during the last four days of the storm- our analysis stops at February 16th due to satellite data clarity constraints, excluding homes that may have lost power up until the end of the storms on February 20th. Further analysis can examine the role of socioecomonic or demographic factors in power loss or restoration.
+Between the nights of February 7th and February 16th, 2021, approximately 155,805 homes lost power. Homes were categorized as losing power if there was a drop of 200 nW or more in the surrouding 30m by 30m area between the two nights. However, this may underestimate the true number of homes affected. Locations within 200 meters of a major roadway were excluded to account for light from traffic, but this may exclude homes in close proximity to roadways. Additionally, homes generating limited lighting during the night of the initial satellite image (for example due to lighting preferences, activity timing, or absence from the home) may be excluded as a strong drop in lighting was not detected. Additionally, this analysis does not account for power loss during the last four days of the storm- our analysis stops at February 16th due to satellite data clarity constraints, excluding homes that may have lost power up until the end of the storms on February 20th. Further analysis can examine the role of socioecomonic or demographic factors in power loss or restoration.
+
+## Data Sources
+- Román, M.O., Wang, Z., Sun, Q., Kalb, V., Miller, S.D., Molthan, A., Schultz, L., Bell, J., Stokes, E.C., Pandey, B. and Seto, K.C., et al. (2018). NASA's Black Marble nighttime lights product suite. Remote Sensing of Environment 210, 113-143. [doi:10.1016/j.rse.2018.03.017]
+(https://ladsweb.modaps.eosdis.nasa.gov/missions-and-measurements/products/VNP46A1). 
+
+- OpenStreetMap contributors (2024). OpenStreetMap [Data set]. OpenStreetMap Foundation. Available as open data under the Open Data Commons Open Database License (ODbL) at openstreetmap.org. 
