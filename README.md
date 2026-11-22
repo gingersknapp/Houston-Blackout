@@ -11,7 +11,6 @@ This project estimates the number of homes that lost power in the Houston metrop
 |README.md                    | README for the repository           |
 |houston-blackouts.qmd                | Analysis code document              |
 |houston-blackouts.pdf                | Exportable analysis PDF             |
-|.quarto/typst/packages/preview | Files for viewing houston-blackouts.pdf     |
 |LICENSE                      | Use license                         |
 |.gitignore                   | Untracked files                     |                            
 
