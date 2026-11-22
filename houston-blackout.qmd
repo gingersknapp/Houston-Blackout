@@ -18,6 +18,9 @@ h08v05_preoutage <- rast("data/VNP46A1/VNP46A1.A2021038.h08v05.001.2021039064328
 h08v06_preoutage <- rast('data/VNP46A1/VNP46A1.A2021038.h08v06.001.2021039064329.tif')
 h08v05_postoutage <- rast('data/VNP46A1/VNP46A1.A2021047.h08v05.001.2021048091106.tif')
 h08v06_postoutage <- rast('data/VNP46A1/VNP46A1.A2021047.h08v06.001.2021048091105.tif')
+
+#Identify Houston area
+houston_bbox <- st_bbox(c(xmin = -96.5, xmax = -94.5, ymin =29,ymax = 30.5), crs = 'EPSG:3083')
 ```
 ```{r}
 # Join pre-outage files
@@ -26,19 +29,43 @@ if (crs(h08v06_preoutage) == crs(h08v05_preoutage)){
     warning("CRS do not match.  Transform before joining")
 }
 
-combined_preoutage <- merge(h08v05_preoutage, h08v06_preoutage)
+combined_preoutage <- merge(h08v05_preoutage, h08v06_preoutage) |> crop(houston_bbox)
 
 ## Join files for 02/16/2026
 if (crs(h08v06_postoutage) == crs(h08v05_postoutage)){
 }else{
     warning("CRS do not match.  Transform before joining")
 }
-combined_postoutage <- merge(h08v05_postoutage, h08v06_postoutage)
+
+combined_postoutage <- merge(h08v05_postoutage, h08v06_postoutage) |> crop(houston_bbox)
+
 ```
 ```{r}
 # Visualize rasters
-plot(combined_preoutage)
-plot(combined_postoutage)
+
+# Check if CRS match
+if (crs(combined_postoutage) == crs(combined_preoutage)){
+}else{
+    warning("CRS do not match.  Transform before joining")
+}
+
+#Crop to Houston
+combined_vis <- c(st_as_stars(crop(combined_preoutage, houston_bbox)), st_as_stars(crop(combined_postoutage, houston_bbox)))
+names(combined_vis) <- c("Pre-outage (2/07/2021)", "Post-outage (2/16/2021)") 
+combined_map <- merge(combined_vis) 
+
+# Create Map
+tm_shape(combined_map) +
+    tm_raster(
+        col.scale = tm_scale_continuous_log1p(values = "Mako"),
+        col.legend = tm_legend(
+            title = 'Night light radiance (nW/cm^2/sr)',
+            orientation = 'landscape')) +
+    tm_title("Light intensity in Houston, Texas before and after 2021 winter storms")+
+    tm_compass(position = c('right', 'top'), size = 0.75, color.dark = 'white', text.color = 'white', text.size = 0.5) +
+    tm_scalebar(position = tm_pos_out('center', 'bottom')) +
+    tm_layout(legend.outside = TRUE, legend.outside.postion = 'bottom')
+
 ```
 ## Create a blackout mask
 
@@ -49,52 +76,26 @@ if (crs(combined_postoutage) == crs(combined_preoutage)){
     warning("CRS do not match.  Transform before joining")
 }
 
- outage_diff <- (combined_postoutage - combined_preoutage)
-
- # crop to the Houston area
- houston_bbox <- st_bbox(c(xmin = -96.5, xmax = -94.5, ymin =29,ymax = 30.5), crs = st_crs(outage_diff))
- 
- outage_diff <- crop(outage_diff, houston_bbox)
-
+ outage_diff <- (combined_preoutage - combined_postoutage)
 
 # Reclassify outage and reproject
 outage_rcl<- matrix(c(-Inf, 200, NA,
                         200, Inf, 1),
                         ncol = 3, byrow = TRUE)
 
-outage_mask <- classify(outage_diff, rcl = outage_rcl) |> 
-    st_as_stars() |> 
-    st_transform(crs = 'EPSG:3083') |> 
-    st_as_sf()
-
-# Check mask
-tm_shape(outage_mask) +
-tm_polygons()
+outage_mask <- classify(outage_diff, rcl = outage_rcl) |> project('EPSG:3083') |> st_as_stars() |> st_as_sf()
 ```
 
 ## Exclude highways from the blackout mask
 ```{r}
 # Read in highway data, specifying motorways, and condense
-roads <- st_read(dsn = 'data/gis_osm_roads_free_1.gpkg/gis_osm_roads_free_1.gpkg', query ="SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'") |> st_union()
+roads <- st_read(dsn = 'data/gis_osm_roads_free_1.gpkg/gis_osm_roads_free_1.gpkg', query ="SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'") |> st_transform('EPSG:3083')
 
 #Create a buffer of area within 200m of roads
-road_buffer <- st_buffer(roads, dist = 200)
-
-# Check CRS with mask
-if (st_crs(road_buffer) == st_crs(outage_mask)){
-}else{
-    warning("CRS do not match.  Transform before joining")
-}
-
-#Reproject roads
-road_buffer <- st_transform(road_buffer, crs = st_crs(outage_mask)) |> st_as_sf()
+road_buffer <- st_buffer(roads, dist = 200) |> st_union() |> st_as_sf()
 
 # Exclude areas within 200 meters of a road from the mask
 outage_exroad <- st_difference(outage_mask, road_buffer)
-
-#Check mask
-tm_shape(outage_exroad) +
-tm_polygons()
 ```
 
 ## Identify homes impacted by blackouts
@@ -104,22 +105,24 @@ tm_polygons()
 homes <- st_read(dsn = 'data/gis_osm_buildings_a_free_1.gpkg/gis_osm_buildings_a_free_1.gpkg', query ="SELECT *
 FROM gis_osm_buildings_a_free_1
 WHERE (type IS NULL AND name IS NULL)
-OR type in ('residential', 'apartments', 'house', 'static_caravan', 'detached')") 
-
-# Match CRS and vectorize
-if (st_crs(homes) == st_crs(outage_mask)){
-}else{
-    warning("CRS do not match.  Transform before joining")
-}
-
-homes <- st_transform(homes, crs = st_crs(outage_exroad)) |> st_as_sf()
+OR type in ('residential', 'apartments', 'house', 'static_caravan', 'detached')") |> st_transform('EPSG:3083') |> st_as_sf()
 
 # Count homes where mask and homes overlap
-blackout_homes <- st_join(homes, outage_exroad)
+blackout_homes <- st_intersection(homes, outage_exroad) |> st_point_on_surface()
 
-print(paste('Approximately',nrow(blackout_homes), 'homes lost power'))
+print(paste('Approximately',length(unique(blackout_homes$osm_id)), 'homes lost power'))
+
+# Map homes that lost power
+tm_basemap('OpenStreetMap') +
+tm_shape(blackout_homes) +
+    tm_dots(
+        alpha = 0.3,
+    ) +
+tm_title("Location of homes in Houston, TX estimated \nto have lost power in the 2021 winter storms") +
+tm_compass(position = tm_pos_in('right', 'top')) +
+tm_scalebar(position = tm_pos_out('center', 'bottom'))
 ```
 
 ## Conclusion
 
-Between the nights of February 7th and February 16th, 2021, approximately 475941 homes lost power.  Homes were categorized as losing power if there was a drop if 200nW or more in the surrouding 30m by 30m area between the two nights.  However, this may underestimate the true number of homes affected.  Locations where within 200 meters of a major roadway were not included to account for light from roadways, but this may exclude homes in close proximity to roadways.  Additionally, homes generating limited lighting during the night of the initial satellite image, (for example due to lighting preferences, activity timing, or absence from the home) may be excluded as a strong drop in lighting was not detected.
+Between the nights of February 7th and February 16th, 2021, approximately 155,804 homes lost power.  Homes were categorized as losing power if there was a drop of 200nW or more in the surrouding 30m by 30m area between the two nights.  However, this may underestimate the true number of homes affected.  Locations where within 200 meters of a major roadway were not included to account for light from roadways, but this may exclude homes in close proximity to roadways.  Additionally, homes generating limited lighting during the night of the initial satellite image, (for example due to lighting preferences, activity timing, or absence from the home) may be excluded as a strong drop in lighting was not detected.
